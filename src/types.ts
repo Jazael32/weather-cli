@@ -22,3 +22,14 @@ export type Store = {
   defaultCityId: number | null;
   settings: Settings;
 };
+
+/** Opción del menú principal. */
+export type MenuOption = {
+  key: string;
+  /** Etiqueta mostrada; puede depender del estado (contador, unidad...). */
+  label: (store: Store) => string;
+  /** Acción al elegir la opción; las de salida no necesitan handler. */
+  handler?: (store: Store) => void | Promise<void>;
+  /** Si es true, termina el bucle del menú tras ejecutarse. */
+  exit?: boolean;
+};

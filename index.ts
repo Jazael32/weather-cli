@@ -1,9 +1,11 @@
 import * as readline from "node:readline";
-import { geocodeCity, getWeather } from "./src/api.ts";
+import { geocodeCity, getForecast, getWeather } from "./src/api.ts";
 import type { GeoResult } from "./src/api.ts";
+import { cyan, green, red, yellow } from "./src/colors.ts";
 import { loadStore, saveStore } from "./src/storage.ts";
-import { formatPlace, printWeather, renderMenu } from "./src/ui.ts";
-import type { City, Store } from "./src/types.ts";
+import { runWithSpinner } from "./src/spinner.ts";
+import type { City, MenuOption, Store } from "./src/types.ts";
+import { formatPlace, printForecast, printWeather, renderMenu } from "./src/ui.ts";
 
 /** Interfaz de entrada con cola de líneas: no pierde líneas que llegan entre
  *  preguntas (entrada por pipe) y funciona igual en modo interactivo. */
@@ -51,20 +53,24 @@ function nextCityId(store: Store): number {
   return store.cities.reduce((max, city) => Math.max(max, city.id), 0) + 1;
 }
 
-/** Muestra el clima de una ciudad con manejo de errores en español. */
-async function showCityWeather(city: City, store: Store): Promise<void> {
+/** Muestra el clima de una ciudad con spinner y manejo de errores en español.
+ *  Con `label` se personaliza el texto del spinner (p. ej. con progreso). */
+async function showCityWeather(city: City, store: Store, label?: string): Promise<void> {
+  const spinnerLabel = label ?? `Obteniendo clima de ${formatPlace(city)}...`;
   try {
-    const weather = await getWeather(city.latitude, city.longitude, store.settings.unit);
+    const weather = await runWithSpinner(spinnerLabel, () =>
+      getWeather(city.latitude, city.longitude, store.settings.unit),
+    );
     printWeather(city, weather, store.settings.unit);
   } catch (error) {
-    console.log(`  No se pudo obtener el clima de ${formatPlace(city)}: ${(error as Error).message}\n`);
+    console.log(red(`  No se pudo obtener el clima de ${formatPlace(city)}: ${(error as Error).message}\n`));
   }
 }
 
 async function showDefaultWeather(store: Store): Promise<void> {
   const city = store.cities.find((c) => c.id === store.defaultCityId);
   if (!city) {
-    console.log("  Aún no hay ciudad default. Usa la opción 5 para establecerla.\n");
+    console.log(yellow("  Aún no hay ciudad default. Usa la opción 5 para establecerla.\n"));
     return;
   }
   await showCityWeather(city, store);
@@ -72,17 +78,38 @@ async function showDefaultWeather(store: Store): Promise<void> {
 
 async function showAllWeather(store: Store): Promise<void> {
   if (store.cities.length === 0) {
-    console.log("  No hay ciudades guardadas. Usa la opción 3 para agregar la primera.\n");
+    console.log(yellow("  No hay ciudades guardadas. Usa la opción 3 para agregar la primera.\n"));
     return;
   }
-  for (const city of store.cities) {
-    await showCityWeather(city, store);
+  const total = store.cities.length;
+  for (const [index, city] of store.cities.entries()) {
+    await showCityWeather(city, store, `Obteniendo clima de ${city.name} (${index + 1}/${total})...`);
+  }
+}
+
+/** Pronóstico de 7 días para una ciudad elegida de la lista. */
+async function showForecast(store: Store): Promise<void> {
+  if (store.cities.length === 0) {
+    console.log(yellow("  No hay ciudades guardadas. Usa la opción 3 para agregar la primera.\n"));
+    return;
+  }
+  console.log("  Ciudades guardadas:\n");
+  const city = await chooseCity(store, "ver el pronóstico");
+  if (!city) return;
+
+  try {
+    const forecast = await runWithSpinner(`Obteniendo pronóstico de ${formatPlace(city)}...`, () =>
+      getForecast(city.latitude, city.longitude, store.settings.unit),
+    );
+    printForecast(city, forecast, store.settings.unit);
+  } catch (error) {
+    console.log(red(`  No se pudo obtener el pronóstico de ${formatPlace(city)}: ${(error as Error).message}\n`));
   }
 }
 
 function listCities(store: Store): void {
   store.cities.forEach((city, index) => {
-    const marker = city.id === store.defaultCityId ? " (default)" : "";
+    const marker = city.id === store.defaultCityId ? ` ${cyan("(default)")}` : "";
     console.log(`    ${index + 1}. ${formatPlace(city)}${marker}`);
   });
 }
@@ -108,7 +135,7 @@ async function pickFromRange(max: number, action: string): Promise<number | null
   }
   const num = Number(trimmed);
   if (!Number.isInteger(num) || num < 1 || num > max) {
-    console.log("  Número no válido.\n");
+    console.log(yellow("  Número no válido.\n"));
     return null;
   }
   return num;
@@ -119,19 +146,19 @@ async function searchAndAddCity(store: Store): Promise<void> {
   if (answer === null) return;
   const query = answer.trim();
   if (!query) {
-    console.log("  No ingresaste ningún nombre.\n");
+    console.log(yellow("  No ingresaste ningún nombre.\n"));
     return;
   }
 
   let results: GeoResult[];
   try {
-    results = await geocodeCity(query);
+    results = await runWithSpinner(`Buscando "${query}"...`, () => geocodeCity(query));
   } catch (error) {
-    console.log(`  Error al buscar: ${(error as Error).message}\n`);
+    console.log(red(`  Error al buscar: ${(error as Error).message}\n`));
     return;
   }
   if (results.length === 0) {
-    console.log(`  No se encontró ninguna ciudad llamada "${query}".\n`);
+    console.log(red(`  No se encontró ninguna ciudad llamada "${query}".\n`));
     return;
   }
 
@@ -144,7 +171,7 @@ async function searchAndAddCity(store: Store): Promise<void> {
   if (index === null) return;
   const result = results[index - 1];
   if (!result) {
-    console.log("  Número no válido.\n");
+    console.log(yellow("  Número no válido.\n"));
     return;
   }
 
@@ -155,7 +182,7 @@ async function searchAndAddCity(store: Store): Promise<void> {
       Math.abs(c.longitude - result.longitude) < 0.01,
   );
   if (duplicated) {
-    console.log(`  ${formatPlace(result)} ya está en tu lista de ciudades.\n`);
+    console.log(yellow(`  ${formatPlace(result)} ya está en tu lista de ciudades.\n`));
     return;
   }
 
@@ -169,11 +196,11 @@ async function searchAndAddCity(store: Store): Promise<void> {
   };
   store.cities.push(city);
   saveStore(store);
-  console.log(`  Ciudad agregada: ${formatPlace(city)}`);
+  console.log(green(`  Ciudad agregada: ${formatPlace(city)}`));
   if (store.defaultCityId === null) {
     store.defaultCityId = city.id;
     saveStore(store);
-    console.log("  Se estableció como ciudad default por ser la primera.\n");
+    console.log(green("  Se estableció como ciudad default por ser la primera.\n"));
   } else {
     console.log();
   }
@@ -181,7 +208,7 @@ async function searchAndAddCity(store: Store): Promise<void> {
 
 async function removeCity(store: Store): Promise<void> {
   if (store.cities.length === 0) {
-    console.log("  No hay ciudades guardadas.\n");
+    console.log(yellow("  No hay ciudades guardadas.\n"));
     return;
   }
   console.log("  Ciudades guardadas:\n");
@@ -195,11 +222,11 @@ async function removeCity(store: Store): Promise<void> {
     store.defaultCityId = newDefault?.id ?? null;
   }
   saveStore(store);
-  console.log(`  Ciudad eliminada: ${formatPlace(city)}`);
+  console.log(green(`  Ciudad eliminada: ${formatPlace(city)}`));
   if (wasDefault) {
     const newDefault = store.cities[0];
     console.log(
-      newDefault ? `  Nueva ciudad default: ${formatPlace(newDefault)}.\n` : "  Ya no hay ciudad default.\n",
+      newDefault ? green(`  Nueva ciudad default: ${formatPlace(newDefault)}.\n`) : "  Ya no hay ciudad default.\n",
     );
   } else {
     console.log();
@@ -208,7 +235,7 @@ async function removeCity(store: Store): Promise<void> {
 
 async function setDefaultCity(store: Store): Promise<void> {
   if (store.cities.length === 0) {
-    console.log("  No hay ciudades guardadas. Usa la opción 3 para agregar la primera.\n");
+    console.log(yellow("  No hay ciudades guardadas. Usa la opción 3 para agregar la primera.\n"));
     return;
   }
   console.log("  Ciudades guardadas:\n");
@@ -217,7 +244,7 @@ async function setDefaultCity(store: Store): Promise<void> {
 
   store.defaultCityId = city.id;
   saveStore(store);
-  console.log(`  Ciudad default: ${formatPlace(city)}\n`);
+  console.log(green(`  Ciudad default: ${formatPlace(city)}\n`));
 }
 
 async function openSettings(store: Store): Promise<void> {
@@ -232,51 +259,46 @@ async function openSettings(store: Store): Promise<void> {
 
   store.settings.unit = store.settings.unit === "celsius" ? "fahrenheit" : "celsius";
   saveStore(store);
-  console.log(`\n  Unidad de temperatura actualizada a ${next}.\n`);
+  console.log(green(`\n  Unidad de temperatura actualizada a ${next}.\n`));
 }
+
+/** Opciones del menú principal: el renderizado y el dispatch derivan de este
+ *  array, así agregar una función nueva es agregar una entrada. */
+const menuOptions: MenuOption[] = [
+  { key: "1", label: () => "Clima de ciudad default", handler: showDefaultWeather },
+  { key: "2", label: (store) => `Clima de todas las ciudades (${store.cities.length})`, handler: showAllWeather },
+  { key: "3", label: () => "Buscar y agregar ciudad", handler: searchAndAddCity },
+  { key: "4", label: () => "Eliminar ciudad", handler: removeCity },
+  { key: "5", label: () => "Establecer ciudad default", handler: setDefaultCity },
+  { key: "6", label: () => "Pronóstico de 7 días", handler: showForecast },
+  { key: "8", label: (store) => `Ajustes (${store.settings.unit === "celsius" ? "°C" : "°F"})`, handler: openSettings },
+  { key: "9", label: () => "Salir", exit: true },
+];
 
 async function main(): Promise<void> {
   const store = loadStore();
   let running = true;
 
   while (running) {
-    console.log(renderMenu(store));
+    console.log(renderMenu(store, menuOptions));
     const answer = await ask("  Selecciona una opción: ");
     if (answer === null) break; // entrada cerrada: salir
     console.log();
 
-    switch (answer.trim()) {
-      case "1":
-        await showDefaultWeather(store);
-        break;
-      case "2":
-        await showAllWeather(store);
-        break;
-      case "3":
-        await searchAndAddCity(store);
-        break;
-      case "4":
-        await removeCity(store);
-        break;
-      case "5":
-        await setDefaultCity(store);
-        break;
-      case "8":
-        await openSettings(store);
-        break;
-      case "9":
-        running = false;
-        break;
-      default:
-        console.log("  Opción no válida. Intenta de nuevo.\n");
+    const option = menuOptions.find((o) => o.key === answer.trim());
+    if (!option) {
+      console.log(yellow("  Opción no válida. Intenta de nuevo.\n"));
+      continue;
     }
+    await option.handler?.(store);
+    if (option.exit) running = false;
   }
 
   rl.close();
-  console.log("  ¡Hasta luego!\n");
+  console.log(green("  ¡Hasta luego!\n"));
 }
 
 main().catch((error: unknown) => {
-  console.error("Error inesperado:", error);
+  console.error(red("Error inesperado:"), error);
   process.exit(1);
 });

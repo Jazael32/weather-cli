@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { yellow } from "./colors.ts";
 import type { Store } from "./types.ts";
 
 /** Ruta del archivo de datos: en el perfil del usuario, para que el binario
@@ -22,7 +23,7 @@ export function loadStore(): Store {
       settings: { unit: raw.settings?.unit === "fahrenheit" ? "fahrenheit" : "celsius" },
     };
   } catch {
-    console.error("  Aviso: no se pudo leer ~/.weather-cli.json, se usará el estado inicial.\n");
+    console.error(yellow("  Aviso: no se pudo leer ~/.weather-cli.json, se usará el estado inicial.\n"));
     return defaultStore();
   }
 }
