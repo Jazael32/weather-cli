@@ -6,8 +6,9 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "typecheck": "bun check",
+    "test": "bun test",
     "dev": "bun run src/index.ts --watch",
-    "build": "bun build --compile src/index.ts --outfile weather-cli"
+    "build": "bun test && bun build --compile src/index.ts --outfile weather-cli"
   },
   "devDependencies": {
     "@types/bun": "latest"

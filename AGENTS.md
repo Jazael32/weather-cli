@@ -11,12 +11,14 @@ Bun + TypeScript console weather app, fully implemented. Spanish, menu-driven CL
 - `src/types/` — one file per domain concept (`City`, `GeoResult`, `Weather`, `Settings`, `Store`, `MenuOption`).
 - `src/api/` — OpenMeteo integration: `client.ts` (shared `fetchJson`), `geocoding.ts` (city name → lat/long), `weather.ts` (current weather + forecast).
 - `src/utils/` — `colors.ts` (ANSI helpers; auto-disabled when not a TTY or `NO_COLOR` is set), `wmo.ts` (WMO code → Spanish description + emoji), `format.ts` (`formatPlace`, `formatDay`, `unitSymbol`), `constants.ts`.
+- `tests/` — bun tests mirroring `src/` (storage + APIs con mocks); `tests/helpers/storeSetup.ts` redirige el store a un archivo temporal.
 
 ## Commands
 
 - Runtime is **Bun**, not Node. Use `bun install` for deps and `bun run src/index.ts` to run.
-- `bun run typecheck` — the only check (`bun check`, TypeScript 7 native). No tests, linter, or formatter are configured.
-- `bun run build` — compiles the standalone executable (`weather-cli.exe` on Windows), the end goal from the README.
+- `bun run typecheck` — revisión de tipos (`bun check`, TypeScript 7 native).
+- `bun run test` — test runner integrado de Bun (`bun test`); los tests viven en `tests/` (espejo de `src/`) y usan `WEATHER_CLI_STORE` + `global.fetch` mockeado, sin red ni toques al `~/.weather-cli.json` real.
+- `bun run build` — compila el ejecutable standalone (`weather-cli.exe` en Windows). Ejecuta `bun test` primero: si algún test falla, el build aborta.
 - OpenMeteo needs no API key and no `.env`; lookups are two steps: geocoding API (city name → lat/long) → forecast API. Example URLs are in the README.
 
 ## Conventions
