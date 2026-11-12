@@ -1,59 +1,7 @@
-import type { Unit } from "./types.ts";
+import type { CurrentWeather, DailyForecast, Unit } from "../types/Weather.ts";
+import { fetchJson } from "./client.ts";
 
-const GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
-
-/** Resultado de la API de geocoding (un lugar encontrado por nombre). */
-export type GeoResult = {
-  name: string;
-  country: string;
-  admin1?: string;
-  latitude: number;
-  longitude: number;
-};
-
-/** Clima actual de una ciudad. */
-export type CurrentWeather = {
-  temperature: number;
-  humidity: number;
-  windSpeed: number;
-};
-
-/** Pronóstico de un día. */
-export type DailyForecast = {
-  /** Fecha ISO "2026-11-10". */
-  date: string;
-  weatherCode: number;
-  tempMax: number;
-  tempMin: number;
-  /** Probabilidad máxima de precipitación (0-100). */
-  precipProb: number;
-};
-
-async function fetchJson(url: string): Promise<unknown> {
-  let response: Response;
-  try {
-    response = await fetch(url);
-  } catch {
-    throw new Error("no se pudo conectar, revisa tu conexión a internet");
-  }
-  if (!response.ok) {
-    throw new Error(`la API respondió con código ${response.status}`);
-  }
-  return response.json();
-}
-
-/** Busca ciudades por nombre (Geocoding API, resultados en español). */
-export async function geocodeCity(name: string, count = 5): Promise<GeoResult[]> {
-  const params = new URLSearchParams({
-    name,
-    count: String(count),
-    language: "es",
-    format: "json",
-  });
-  const data = (await fetchJson(`${GEOCODING_URL}?${params}`)) as { results?: GeoResult[] };
-  return data.results ?? [];
-}
 
 /** Obtiene el clima actual de unas coordenadas (OpenMeteo Forecast API). */
 export async function getWeather(

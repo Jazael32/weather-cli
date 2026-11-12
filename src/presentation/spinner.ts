@@ -1,4 +1,4 @@
-import { cyan } from "./colors.ts";
+import { cyan } from "../utils/colors.ts";
 
 /** Frames Braille de la animación. */
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
